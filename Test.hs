@@ -3,100 +3,87 @@
 
 module Main where
 
+import Assembler
+import Control.Applicative
 import Control.Monad.Cont
 import Control.Monad.Identity
 import Control.Monad.State
-
-data Machine = Machine Int
-  deriving Show
-
-data Mode = Assembler
-          | Symbolic
-  deriving (Eq, Show)
-
-data ExecutionState = ExecutionState [AVR] Mode
-
-type Program = Machine -> Machine
-type Instruction = Program -> Program
-type AVR = ContT () (StateT ExecutionState (StateT Machine Identity)) ()
-
--- needs labels!
--- a label is a marker
--- it can be used when executing either 'call' or 'ret'
--- can be created using callCC but must be referred to by name
--- problem: only forward visibility
--- cLABEL code = callCC $ code
--- cLABEL $ \subx -> do
--- what is the actual problem of having multiple high-level declarations, for each subroutine?
-
+import Control.Monad.Trans.Tardis
+import Shared
 
 -- TODO:
--- Split up state between shared state (like callCC stack) and evaluation-specific state
+-- Split up state between shared state (like callCC stack) and evaluation-specific state *DONE*
 -- make generic evaluator-functions
 -- implement instructions for both cases: SBV and DSL
 -- fix polymorphic return types and experiment with suitable state in both cases
 -- think about SAT-solving compilers (in regard to optimizations)
 
-lF f g = do
-  ExecutionState _ mode <- lift get
-  if mode == Assembler then f else g
+{- addS :: Int -> Int -> AVR
+addS _ _ = lift . lift . modify $ \(Machine m) -> (Machine (m + 1)) -}
 
-lF1 f g a1 = do
-  ExecutionState _ mode <- lift get
-  if mode == Assembler then f a1 else g a1
-
-lF2 f g a1 a2 = do
-  ExecutionState _ mode <- lift get
-  if mode == Assembler then f a1 a2 else g a1 a2
-
-lF3 f g a1 a2 a3 = do
-  ExecutionState _ mode <- lift get
-  if mode == Assembler then f a1 a2 a3 else g a1 a2 a3
-
-addA :: Int -> Int -> Int -> AVR
-addA _ _ _ = return ()
-
-addS :: Int -> Int -> Int -> AVR
-addS _ _ _ = lift . lift . modify $ \(Machine m) -> (Machine (m + 1))
-
-add = lF3 addA addS
-
-program :: Mode -> Program
-program mode m = runIdentity $ execStateT (execStateT (runContT entryPoint (return . id)) $ ExecutionState [] mode) m
+-- program :: Program
+program m = runIdentity $ execStateT (execStateT (execStateT (runContT entryPoint (return . id)) (JumpState Nothing Nothing)) $ ExecutionState []) m
 
 jmp = id
 
 jmpif cond p1 p2 = if cond then p1 else p2
 
-call next = callCC $ \loc -> do
-  lift (modify $ \(ExecutionState p m) -> ExecutionState (loc ():p) m)
-  next
+-- should execute until the label has been found
+{- call next = callCC $ \loc -> do
+  lift . lift . modify $ \(ExecutionState p) -> ExecutionState (loc ():p)
+  next -}
 
-ret = do
-  ExecutionState (next:t) m <- lift get
-  lift . put $ ExecutionState t m
-  next
+-- should check if the current label exists in the dictionary, else request it from the future
+-- begin by assuming that the requested label has not yet been seen
+-- also ignore any duplication of state to begin with
+call lbl = do
+  callCC $ \loc -> lift $ modify $ \(JumpState _ _) -> (JumpState (Just $ loc ()) Nothing) 
+  JumpState _ target <- lift get
+  case target of
+    Just lbl -> lbl
+    Nothing -> return ()
+
+-- should check if not-exected continuation exists, in
+-- which case it should register a continuation and call the supplied one
+-- perhaps this could be written such that no execution is wasted (ignored)
+{- label lbl = undefined callCC $ \loc -> lift $ do
+  target <- getPast
+  when (target == lbl) $ sendPast (FutureLabel $ loc ()) -}
+-- label _ = lift $ sendPast $ FutureLabel (add R3 R3)
+
+
+-- given _ Nothing -> fill in loc, target continuation
+-- must cleanup sometime to ensure non-infinite recursion
+label _ = do
+  callCC $ \loc -> do
+    JumpState callee target <- lift get
+    case (callee, target) of
+      -- Just bla -> lift . put $ JumpState Nothing Nothing
+      (Just callee', Nothing) -> lift (put (JumpState Nothing (Just $ loc ()))) >> callee'
+
+{- ret = do
+  ExecutionState (next:t) <- lift get
+  lift . lift . put $ ExecutionState t
+  next -}
 
 entryPoint = do
-  call sub1
-  add 0 0 1
-  call sub2
+  add R1 R1
+  call "sub2"
 
-sub1 = do
-  add 0 0 1
-  ret
+  add R2 R2
 
-sub2 = do
-  add 0 0 1
-  ret
+  label "sub2"
+  add R5 R5
+  {- FutureLabel l <- -}
+  -- l
 
-sub3 = do
-  add 0 0 1
-  jmp sub3
+  -- label "sub1"
+  -- add R0 R2
+
 
 main :: IO ()
 main = print res
-  where (Machine res) = program Symbolic $ Machine 0
+  where res = program initialState
 
 {- 
 data SInstruction = SADD Int
