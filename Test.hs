@@ -9,83 +9,65 @@ import Control.Monad.Cont
 import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Trans.Tardis
+import qualified Data.Map as M
+import Debug.Trace
 import Shared
+import System.IO.Unsafe
 
 -- TODO:
--- Split up state between shared state (like callCC stack) and evaluation-specific state *DONE*
--- make generic evaluator-functions
 -- implement instructions for both cases: SBV and DSL
 -- fix polymorphic return types and experiment with suitable state in both cases
 -- think about SAT-solving compilers (in regard to optimizations)
 
-{- addS :: Int -> Int -> AVR
-addS _ _ = lift . lift . modify $ \(Machine m) -> (Machine (m + 1)) -}
-
--- program :: Program
-program m = runIdentity $ execStateT (execStateT (execStateT (runContT entryPoint (return . id)) (JumpState Nothing Nothing)) $ ExecutionState []) m
+program m = runIdentity $ execStateT (execStateT (execStateT (runContT entryPoint (return . id))
+                            (LabelState M.empty Nothing [] Nothing)) $ ExecutionState []) m
 
 jmp = id
 
 jmpif cond p1 p2 = if cond then p1 else p2
 
--- should execute until the label has been found
-{- call next = callCC $ \loc -> do
-  lift . lift . modify $ \(ExecutionState p) -> ExecutionState (loc ():p)
-  next -}
-
--- should check if the current label exists in the dictionary, else request it from the future
--- begin by assuming that the requested label has not yet been seen
--- also ignore any duplication of state to begin with
 call lbl = do
-  callCC $ \loc -> lift $ modify $ \(JumpState _ _) -> (JumpState (Just $ loc ()) Nothing) 
-  JumpState _ target <- lift get
-  case target of
-    Just lbl -> lbl
-    Nothing -> return ()
+  callCC $ \retry -> lift . modify $ \labelState -> labelState { tmp = Just (retry ()) }
+  Just retry <- lift . gets $ tmp
+  labelState <- lift get
+  callCC $ \escape -> do
+    case M.lookup lbl (labelMap labelState) of
+      Nothing -> do
+        lift . modify $ \labelState -> labelState { labelTarget = Just (lbl, retry) }
+        -- TODO: snapshot state on restore later on
+        escape ()
+      Just goto -> do
+        lift . modify $ \state -> state { callStack = escape () : callStack state }
+        goto
 
--- should check if not-exected continuation exists, in
--- which case it should register a continuation and call the supplied one
--- perhaps this could be written such that no execution is wasted (ignored)
-{- label lbl = undefined callCC $ \loc -> lift $ do
-  target <- getPast
-  when (target == lbl) $ sendPast (FutureLabel $ loc ()) -}
--- label _ = lift $ sendPast $ FutureLabel (add R3 R3)
-
-
--- given _ Nothing -> fill in loc, target continuation
--- must cleanup sometime to ensure non-infinite recursion
-label _ = do
+label lbl = do
   callCC $ \loc -> do
-    JumpState callee target <- lift get
-    case (callee, target) of
-      -- Just bla -> lift . put $ JumpState Nothing Nothing
-      (Just callee', Nothing) -> lift (put (JumpState Nothing (Just $ loc ()))) >> callee'
+    lift . modify $ \labelState -> let map' = M.insert lbl (loc ()) (labelMap labelState) in
+                                  labelState { labelMap = map' }
+    labelState <- lift . gets $ labelTarget
+    case labelState of
+      Nothing -> return ()
+      Just (lbl', source) -> when (lbl' == lbl) $ do
+        lift . modify $ \labelState -> labelState { labelTarget = Nothing }
+        source
 
-{- ret = do
-  ExecutionState (next:t) <- lift get
-  lift . lift . put $ ExecutionState t
-  next -}
+ret = do
+  stack <- lift . gets $ callStack
+  when (not . null $ stack) $ do
+    let (loc:rest) = stack
+    lift . modify $ \state -> state { callStack = rest }
+    loc
 
 entryPoint = do
   add R1 R1
-  call "sub2"
+  call "subr"
 
   add R2 R2
 
-  label "sub2"
-  add R5 R5
-  {- FutureLabel l <- -}
-  -- l
-
-  -- label "sub1"
-  -- add R0 R2
-
+  label "subr"
+  add R3 R3
+  ret
 
 main :: IO ()
 main = print res
   where res = program initialState
-
-{- 
-data SInstruction = SADD Int
-                  | SSUB Int
--}

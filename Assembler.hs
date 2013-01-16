@@ -83,8 +83,4 @@ rec :: AVRInstruction -> AVR
 rec instruction = lift . lift . lift . modify $ \(AssemblerState l) -> AssemblerState (instruction:l)
 
 add :: Register -> Register -> AVR
-add r1 r2 = do
-  JumpState callee _ <- lift get
-  case callee of
-    Just _ -> return ()
-    Nothing -> rec $ ADD r1 r2
+add = (rec .) . ADD

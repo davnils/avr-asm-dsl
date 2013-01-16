@@ -4,6 +4,7 @@ import Control.Monad.Cont
 import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Trans.Tardis
+import qualified Data.Map as M
 
 data Register = R0
            		| R1
@@ -65,12 +66,16 @@ data Mode = Assembler
   deriving (Eq, Show)
 
 data ExecutionState a = ExecutionState [AVRBackend a]
-data FutureLabel a = FutureLabel (AVRBackend a)
-data JumpState a = JumpState (Maybe (AVRBackend a)) (Maybe (AVRBackend a))
+data LabelState a = LabelState {
+  labelMap :: M.Map String (AVRBackend a),
+  labelTarget :: Maybe (String, AVRBackend a),
+  callStack :: [AVRBackend a],
+  tmp :: Maybe (AVRBackend a)
+}
 
 -- type Program = Machine -> Machine
 -- type Instruction = Program -> Program
-type AVRBackend a = ContT () (StateT (JumpState a) (StateT (ExecutionState a) (StateT a Identity))) ()
+type AVRBackend a = ContT () (StateT (LabelState a) (StateT (ExecutionState a) (StateT a Identity))) ()
 
 -- an alternative to modules might be to add an upper layer in the transformer stack
 -- which only defines a monad instance which handles setup and lifts the ContT bind
