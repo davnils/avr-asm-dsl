@@ -73,14 +73,8 @@ data AVRInstruction = ADD Register Register
 
 initialState = AssemblerState []
 
--- maintain state of previously generated stablenames.
--- perform a lookup, if value exists ==> append to the existing list of instructions (if tail is empty)
---                            else   ==> create an empty vector and append to the list, together with the stablename
--- this is weird - the function should not be evaluated.
--- all branches should rather be sorted out separetely, Overlapping control flows might still exist though.
-
 rec :: AVRInstruction -> AVR
-rec instruction = lift . lift . lift . modify $ \(AssemblerState l) -> AssemblerState (instruction:l)
+rec instruction = lift . lift . modify $ \(AssemblerState l) -> AssemblerState (instruction:l)
 
 add :: Register -> Register -> AVR
 add = (rec .) . ADD

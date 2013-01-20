@@ -10,6 +10,7 @@ import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Trans.Tardis
 import qualified Data.Map as M
+import Data.Maybe (fromJust)
 import Debug.Trace
 import Shared
 import System.IO.Unsafe
@@ -19,8 +20,16 @@ import System.IO.Unsafe
 -- fix polymorphic return types and experiment with suitable state in both cases
 -- think about SAT-solving compilers (in regard to optimizations)
 
-program m = runIdentity $ execStateT (execStateT (execStateT (runContT entryPoint (return . id))
-                            (LabelState M.empty Nothing [] Nothing)) $ ExecutionState []) m
+
+
+-- OVERALL PLAN FOR OUTPUT and VERIFIER:
+-- output can traverse the program, instruction by instruction, and only translate to NASM-format (SIMPLE!)
+--
+-- verifier needs to handle jumps specificially
+-- jmpz = ite (getFlag Z)
+
+program m = runIdentity $ execStateT (execStateT (runContT entryPoint (return . id))
+                            (LabelState M.empty Nothing [] Nothing Nothing)) m
 
 jmp = id
 
@@ -34,10 +43,13 @@ call lbl = do
     case M.lookup lbl (labelMap labelState) of
       Nothing -> do
         lift . modify $ \labelState -> labelState { labelTarget = Just (lbl, retry) }
-        -- TODO: snapshot state on restore later on
-        escape ()
+        lift (lift (get)) >>= \s -> lift $ modify $ \state -> state { stateSnapshot = Just s }
       Just goto -> do
         lift . modify $ \state -> state { callStack = escape () : callStack state }
+        snapshot <- lift . gets $ stateSnapshot
+        case snapshot of
+          Nothing -> return ()
+          Just s -> lift . lift $ put s
         goto
 
 label lbl = do

@@ -65,17 +65,13 @@ data Mode = Assembler
           | Symbolic
   deriving (Eq, Show)
 
-data ExecutionState a = ExecutionState [AVRBackend a]
+data ExecutionState a = ExecutionState a
 data LabelState a = LabelState {
   labelMap :: M.Map String (AVRBackend a),
   labelTarget :: Maybe (String, AVRBackend a),
   callStack :: [AVRBackend a],
+  stateSnapshot :: Maybe a,
   tmp :: Maybe (AVRBackend a)
 }
 
--- type Program = Machine -> Machine
--- type Instruction = Program -> Program
-type AVRBackend a = ContT () (StateT (LabelState a) (StateT (ExecutionState a) (StateT a Identity))) ()
-
--- an alternative to modules might be to add an upper layer in the transformer stack
--- which only defines a monad instance which handles setup and lifts the ContT bind
+type AVRBackend a = ContT () (StateT (LabelState a) (StateT a Identity)) ()
