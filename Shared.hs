@@ -55,12 +55,6 @@ data Register = R0
            		| ZSUB
   deriving (Eq, Show)
 
--- symbolic backend
-data Machine = Machine Int
-  deriving Show
-type BackendState = Machine
--- 
-
 data Mode = Assembler
           | Symbolic
   deriving (Eq, Show)
@@ -75,3 +69,9 @@ data LabelState a = LabelState {
 }
 
 type AVRBackend a = ContT () (StateT (LabelState a) (StateT a Identity)) ()
+
+programInternal start machineState labelState = runIdentity $ execStateT (
+                                                                execStateT (runContT start (return . id)) labelState
+                                                              ) machineState
+
+program start machineState = programInternal start machineState $ LabelState M.empty Nothing [] Nothing Nothing
