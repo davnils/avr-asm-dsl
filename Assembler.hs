@@ -20,6 +20,7 @@ data AssemblerState = AssemblerState [AVRInstruction]
   deriving (Eq, Show)
 
 data AVRInstruction = ADD Register Register
+                    | ADC Register Register
                     | ADIW RegisterLow Constant
                     | SUB Register Register
                     | SUBI Register Constant

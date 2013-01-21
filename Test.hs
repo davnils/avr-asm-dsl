@@ -11,13 +11,18 @@ import qualified Data.Map as M
 import Shared
 import Verification
 
-entryPoint = do
+prog1 = do
+  subi R2 4
   label "loop"
-  add R1 R1
+  subi R2 3
+  subi R1 1
   brne "loop"
 
-  add R2 R2
+prog2 = do
+  subi R2 4
 
 main :: IO ()
-main = print res
-  where res = program entryPoint initialState
+main = print res1 >> print res2
+  where
+    res1 = program prog1 initialState
+    res2 = program prog2 initialState

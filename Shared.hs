@@ -4,6 +4,7 @@ import Control.Monad.Cont
 import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Trans.Tardis
+import Data.Array (Ix(..))
 import qualified Data.Map as M
 
 data Register = R0
@@ -53,7 +54,10 @@ data Register = R0
            		| SUBZ
            		| ZINC
            		| ZSUB
-  deriving (Eq, Show)
+  deriving (Bounded, Enum, Eq, Ix, Ord, Show)
+
+data StatusFlag = SC | SZ | SN | SV | SS | SH | ST | SI
+  deriving (Bounded, Enum, Eq, Ix, Ord, Show)
 
 data Mode = Assembler
           | Symbolic
@@ -68,7 +72,8 @@ data LabelState a = LabelState {
   tmp :: Maybe (AVRBackend a)
 }
 
-type AVRBackend a = ContT () (StateT (LabelState a) (StateT a Identity)) ()
+type AVRBackend a = ContT () (AVRBackendBase a) ()
+type AVRBackendBase a = StateT (LabelState a) (StateT a Identity)
 
 programInternal start machineState labelState = runIdentity $ execStateT (
                                                                 execStateT (runContT start (return . id)) labelState

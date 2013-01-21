@@ -1,3 +1,4 @@
+-- läs http://www.reddit.com/r/programming/comments/15q6lw/the_continuation_monad/
 {-# Language TypeSynonymInstances, FlexibleInstances #-}
 
 module Verification where
@@ -5,6 +6,7 @@ module Verification where
 import Control.Applicative
 import Control.Monad.Cont
 import Control.Monad.State
+import Data.Array (Array, Ix(..), (!), (//), array)
 import qualified Data.Map as M
 import Data.SBV
 import Shared
@@ -14,22 +16,32 @@ import Shared
 --------------------------------------------
 
 type AVR = AVRBackend MachineState
+-- type AVRBase = AVRBackendBase MachineState
 
-data MachineState = MachineState SWord8
-  deriving (Eq, Show)
+data MachineState = MachineState {
+    memory :: SFunArray Word16 Word8,
+    registers :: Array Register SWord8,
+    sreg :: Array StatusFlag SBool,
+    stackL :: SWord8,
+    stackH :: SWord8
+} deriving Show
 
 instance Mergeable AVR where
   symbolicMerge b m1 m2 = do
     s <- lift get
     s' <- lift . lift $ get
 
-    let MachineState m1' = programInternal m1 s' s
-    let MachineState m2' = programInternal m2 s' s
-    let m' = MachineState $ symbolicMerge b m1' m2'
+    let MachineState a1 a2 a3 a4 a5 = programInternal m1 s' s
+    let MachineState b1 b2 b3 b4 b5 = programInternal m2 s' s
+    let m' = MachineState (symbolicMerge b a1 b1) (symbolicMerge b a2 b2) (symbolicMerge b a3 b3) (symbolicMerge b a4 b4) (symbolicMerge b a5 b5)
 
     lift . lift $ put m'
 
-initialState = MachineState 0
+initialState = MachineState mem reg status 0 0
+  where
+  mem = resetArray (mkSFunArray $ const 0) 0
+  reg = array (minBound, maxBound) $ zip [minBound..maxBound] $ cycle [0]
+  status = array (minBound, maxBound) $ zip [minBound..maxBound] $ cycle [true]
 
 jmpLabel = processLabel False
 
@@ -83,27 +95,131 @@ label lbl = do
 
 ret = do
   stack <- lift . gets $ callStack
-  when (not . null $ stack) $ do
+  unless (null stack) $ do
     -- extract instruction to be executed upon return
     let (loc:rest) = stack
     lift . modify $ \state -> state { callStack = rest }
     loc
 
-rcall :: String -> AVR
-rcall = callLabel
+writeRegister reg val = lift . modify $
+  \s -> s { registers = registers s // [(reg, val)] }
+
+readRegister reg = do
+  regs <- lift $ gets registers
+  return $ regs ! reg
+
+readStatusReg bit = do
+  sreg' <- lift $ gets sreg
+  return $ sreg' ! bit
+
+readStatusRegWord bit = do
+  sreg' <- lift $ gets sreg
+  return $ oneIf $ sreg' ! bit
+
+writeStatusReg bit val = lift . modify $
+  \s -> s { sreg = sreg s // [(bit, val)] }
+
+-- Artihmetic instructions
+
+addInternal :: Register -> Register -> SWord8 -> AVR
+addInternal regd regr k = lift $ do
+  vd <- readRegister regd
+  vr <- readRegister regr
+  let r = vd + vr + k
+  writeRegister regd r
+
+  writeStatusReg SN $ msb r
+
+  writeStatusReg SH $
+    (sbvTestBit vd 3 &&& sbvTestBit vr 3) |||
+    (sbvTestBit vr 3 &&& (bnot $ sbvTestBit r 3)) |||
+    ((bnot $ sbvTestBit r 3) &&& sbvTestBit vd 3)
+
+  writeStatusReg SZ $ r .== 0
+
+  writeStatusReg SV $
+    (sbvTestBit vd 7 &&& sbvTestBit vr 7 &&& (bnot $ sbvTestBit r 7)) |||
+    ((bnot $ sbvTestBit vd 7) &&& (bnot $ sbvTestBit vr 7) &&& sbvTestBit r 7)
+
+  writeStatusReg SC $
+    (sbvTestBit vd 7 &&& sbvTestBit vr 7) |||
+    (sbvTestBit vr 7 &&& (bnot $ sbvTestBit r 7)) |||
+    ((bnot $ sbvTestBit r 7) &&& sbvTestBit vd 7)
+
+  ss <- liftM2 (+) (readStatusRegWord SN) (readStatusRegWord SV)
+  writeStatusReg SS $ ss .== (1 :: SWord8)
+
+subInternal :: Register -> Maybe Register -> SWord8 -> AVR
+subInternal regd regr k = lift $ do
+  vd <- readRegister regd
+
+  vr <- case regr of
+    Nothing -> return 0
+    Just regr' -> readRegister regr'
+
+  let r = vd - vr - k
+  writeRegister regd r
+
+  writeStatusReg SN $ msb r
+
+  writeStatusReg SH $
+    ((bnot $ sbvTestBit vd 3) &&& sbvTestBit vr 3) |||
+    (sbvTestBit vr 3 &&& sbvTestBit r 3) |||
+    ((bnot $ sbvTestBit r 3) &&& sbvTestBit vd 3)
+
+  writeStatusReg SZ $ r .== 0
+
+  writeStatusReg SV $
+    (sbvTestBit vd 7 &&& (bnot $ sbvTestBit vr 7) &&& (bnot $ sbvTestBit r 7)) |||
+    ((bnot $ sbvTestBit vd 7) &&& sbvTestBit vr 7 &&& sbvTestBit r 7)
+
+  writeStatusReg SC $
+    ((bnot $ sbvTestBit vd 7) &&& sbvTestBit vr 7) |||
+    (sbvTestBit vr 7 &&& sbvTestBit r 7) |||
+    (sbvTestBit r 7 &&& (bnot $ sbvTestBit vd 7))
+
+  ss <- liftM2 (+) (readStatusRegWord SN) (readStatusRegWord SV)
+  writeStatusReg SS $ ss .== (1 :: SWord8)
+
+add :: Register -> Register -> AVR
+add r1 r2 = addInternal r1 r2 0
+
+adc :: Register -> Register -> AVR
+adc r1 r2 = do
+  carry <- lift $ readStatusRegWord SC
+  addInternal r1 r2 carry
+
+adiw :: Register -> SWord8 -> AVR
+adiw = error "Currently unsupported"
+
+sub :: Register -> Register -> AVR
+sub r1 r2 = subInternal r1 (Just r2) 0
+
+subi :: Register -> SWord8 -> AVR
+subi reg = subInternal reg Nothing
+
+subc :: Register -> Register -> AVR
+subc r1 r2 = do
+  carry <- lift $ readStatusRegWord SC
+  subInternal r1 (Just r2) carry
+
+subci :: Register -> SWord8 -> AVR
+subci reg k1 = do
+  carry <- lift $ readStatusRegWord SC
+  subInternal reg Nothing carry
+
+subiw :: Register -> SWord8 -> AVR
+subiw = error "Currently unsupported"
 
 breq :: String -> AVR
 breq target = do
-  MachineState s <- lift . lift $ get
-  jmpLabelCond (s .== 1) target
+  s <- lift $ readStatusReg SZ
+  jmpLabelCond s target
 
 brne :: String -> AVR
 brne target = do
-  MachineState s <- lift . lift $ get
-  jmpLabelCond (s ./= 5) target
+  s <- lift $ readStatusReg SZ
+  jmpLabelCond (bnot s) target
 
-addCount :: SWord8 -> AVR
-addCount i = lift . lift . modify $ \(MachineState c) -> MachineState (c + i)
-
-add :: Register -> Register -> AVR
-add _ _ = addCount 1
+rcall :: String -> AVR
+rcall = callLabel
