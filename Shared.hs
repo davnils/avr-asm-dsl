@@ -5,6 +5,7 @@ import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Trans.Tardis
 import Data.Array (Ix(..))
+import Data.SBV
 import qualified Data.Map as M
 
 data Register = R0
@@ -69,7 +70,8 @@ data LabelState a = LabelState {
   labelTarget :: Maybe (String, AVRBackend a),
   callStack :: [AVRBackend a],
   stateSnapshot :: Maybe a,
-  tmp :: Maybe (AVRBackend a)
+  tmp :: Maybe (AVRBackend a),
+  callCount :: SInt8
 }
 
 type AVRBackend a = ContT () (AVRBackendBase a) ()
@@ -79,4 +81,4 @@ programInternal start machineState labelState = runIdentity $ execStateT (
                                                                 execStateT (runContT start (return . id)) labelState
                                                               ) machineState
 
-program start machineState = programInternal start machineState $ LabelState M.empty Nothing [] Nothing Nothing
+program start machineState = programInternal start machineState $ LabelState M.empty Nothing [] Nothing Nothing 0

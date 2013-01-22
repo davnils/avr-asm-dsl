@@ -15,6 +15,8 @@ import Shared
 --         Verification backend           --
 --------------------------------------------
 
+maxCallCount = 10
+
 type AVR = AVRBackend MachineState
 -- type AVRBase = AVRBackendBase MachineState
 
@@ -45,8 +47,10 @@ initialState = MachineState mem reg status 0 0
 
 jmpLabel = processLabel False
 
-jmpLabelCond cond target = callCC $ \noJump ->
-  ite cond (processLabel False target) (noJump ())
+jmpLabelCond cond target = callCC $ \noJump -> do
+  count <- lift $ gets callCount
+  lift . modify $ \state -> state { callCount = count + 1 }
+  ite (count .< maxCallCount &&& cond) (processLabel False target) (noJump ())
 
 callLabel = processLabel True 
 
