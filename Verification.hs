@@ -9,6 +9,7 @@ import Control.Monad.State
 import Data.Array (Array, Ix(..), (!), (//), array)
 import qualified Data.Map as M
 import Data.SBV
+import Prelude hiding (and)
 import Shared
 
 --------------------------------------------
@@ -18,7 +19,6 @@ import Shared
 maxCallCount = 10
 
 type AVR = AVRBackend MachineState
--- type AVRBase = AVRBackendBase MachineState
 
 data MachineState = MachineState {
     memory :: SFunArray Word16 Word8,
@@ -215,6 +215,79 @@ subci reg k1 = do
 subiw :: Register -> SWord8 -> AVR
 subiw = error "Currently unsupported"
 
+updateLogicFlags :: SWord8 -> AVR
+updateLogicFlags r = lift $ do
+  writeStatusReg SN $ msb r
+  writeStatusReg SZ $ r .== 0
+  writeStatusReg SV false
+  ss <- liftM2 (+) (readStatusRegWord SN) (readStatusRegWord SV)
+  writeStatusReg SS $ ss .== (1 :: SWord8)
+
+and :: Register -> Register -> AVR
+and r1 r2 = do
+  v1 <- lift $ readRegister r1
+  v2 <- lift $ readRegister r2
+  let result = v1 .&. v2
+  lift $ writeRegister r1 $ result
+  updateLogicFlags result
+
+andi :: Register -> SWord8 -> AVR
+andi r1 k = do
+  v1 <- lift $ readRegister r1
+  let result = v1 .&. k
+  lift $ writeRegister r1 $ result
+  updateLogicFlags result
+
+or :: Register -> Register -> AVR
+or r1 r2 = do
+  v1 <- lift $ readRegister r1
+  v2 <- lift $ readRegister r2
+  let result = v1 .|. v2
+  lift $ writeRegister r1 $ result
+  updateLogicFlags result
+
+ori :: Register -> SWord8 -> AVR
+ori r1 k = do
+  v1 <- lift $ readRegister r1
+  let result = v1 .|. k
+  lift $ writeRegister r1 $ result
+  updateLogicFlags result
+
+eor :: Register -> Register -> AVR
+eor r1 r2 = do
+  v1 <- lift $ readRegister r1
+  v2 <- lift $ readRegister r2
+  let result = xor v1 v2
+  lift $ writeRegister r1 $ result
+  updateLogicFlags result
+
+com =  error "Currently unsupported"
+
+neg =  error "Currently unsupported"
+
+sbr :: Register -> SWord8 -> AVR
+sbr r1 k = ori r1 k
+
+cbr :: Register -> SWord8 -> AVR
+cbr r1 k = andi r1 (0xFF - k)
+
+inc :: Register -> AVR
+inc = error "Currently unsupported"
+
+dec :: Register -> AVR
+dec = error "Currently unsupported"
+
+tst :: Register -> AVR
+tst r1 = and r1 r1
+
+clr :: Register -> AVR
+clr r1 = eor r1 r1
+
+set :: Register -> AVR
+set r1 = lift $ writeRegister r1 0xFF
+
+-- Branch instructions
+
 breq :: String -> AVR
 breq target = do
   s <- lift $ readStatusReg SZ
@@ -227,3 +300,5 @@ brne target = do
 
 rcall :: String -> AVR
 rcall = callLabel
+
+
