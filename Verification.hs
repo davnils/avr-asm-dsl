@@ -16,7 +16,7 @@ import Shared
 --         Verification backend           --
 --------------------------------------------
 
-maxCallCount = 10
+maxCallCount = 1000
 
 type AVR = AVRBackend MachineState
 
@@ -54,7 +54,10 @@ jmpLabelCond cond target = callCC $ \noJump -> do
 
 callLabel = processLabel True 
 
-processLabel saveRet lbl = do
+processLabel saveRet lbl = callCC $ \skipLabel -> do
+  -- check if a label-request is already active, then simply return
+  request <- lift . gets $ labelTarget
+  maybe (return ()) (const $ skipLabel ()) request
   -- retrieve retry-continuation, wrapping the whole function
   callCC $ \retry -> lift . modify $ \labelState -> labelState { tmp = Just (retry ()) }
   Just retry <- lift . gets $ tmp
@@ -150,8 +153,8 @@ addInternal regd regr k = lift $ do
     (sbvTestBit vr 7 &&& (bnot $ sbvTestBit r 7)) |||
     ((bnot $ sbvTestBit r 7) &&& sbvTestBit vd 7)
 
-  ss <- liftM2 (+) (readStatusRegWord SN) (readStatusRegWord SV)
-  writeStatusReg SS $ ss .== (1 :: SWord8)
+  ss <- liftM2 (<+>) (readStatusReg SN) (readStatusReg SV)
+  writeStatusReg SS ss
 
 subInternal :: Register -> Maybe Register -> SWord8 -> AVR
 subInternal regd regr k = lift $ do
@@ -182,8 +185,8 @@ subInternal regd regr k = lift $ do
     (sbvTestBit vr 7 &&& sbvTestBit r 7) |||
     (sbvTestBit r 7 &&& (bnot $ sbvTestBit vd 7))
 
-  ss <- liftM2 (+) (readStatusRegWord SN) (readStatusRegWord SV)
-  writeStatusReg SS $ ss .== (1 :: SWord8)
+  ss <- liftM2 (<+>) (readStatusReg SN) (readStatusReg SV)
+  writeStatusReg SS ss
 
 add :: Register -> Register -> AVR
 add r1 r2 = addInternal r1 r2 0
@@ -220,22 +223,22 @@ updateLogicFlags r = lift $ do
   writeStatusReg SN $ msb r
   writeStatusReg SZ $ r .== 0
   writeStatusReg SV false
-  ss <- liftM2 (+) (readStatusRegWord SN) (readStatusRegWord SV)
-  writeStatusReg SS $ ss .== (1 :: SWord8)
+  ss <- liftM2 (<+>) (readStatusReg SN) (readStatusReg SV)
+  writeStatusReg SS ss
 
 and :: Register -> Register -> AVR
 and r1 r2 = do
   v1 <- lift $ readRegister r1
   v2 <- lift $ readRegister r2
   let result = v1 .&. v2
-  lift $ writeRegister r1 $ result
+  lift $ writeRegister r1 result
   updateLogicFlags result
 
 andi :: Register -> SWord8 -> AVR
 andi r1 k = do
   v1 <- lift $ readRegister r1
   let result = v1 .&. k
-  lift $ writeRegister r1 $ result
+  lift $ writeRegister r1 result
   updateLogicFlags result
 
 or :: Register -> Register -> AVR
@@ -243,14 +246,14 @@ or r1 r2 = do
   v1 <- lift $ readRegister r1
   v2 <- lift $ readRegister r2
   let result = v1 .|. v2
-  lift $ writeRegister r1 $ result
+  lift $ writeRegister r1 result
   updateLogicFlags result
 
 ori :: Register -> SWord8 -> AVR
 ori r1 k = do
   v1 <- lift $ readRegister r1
   let result = v1 .|. k
-  lift $ writeRegister r1 $ result
+  lift $ writeRegister r1 result
   updateLogicFlags result
 
 eor :: Register -> Register -> AVR
@@ -258,7 +261,7 @@ eor r1 r2 = do
   v1 <- lift $ readRegister r1
   v2 <- lift $ readRegister r2
   let result = xor v1 v2
-  lift $ writeRegister r1 $ result
+  lift $ writeRegister r1 result
   updateLogicFlags result
 
 com =  error "Currently unsupported"
@@ -266,7 +269,7 @@ com =  error "Currently unsupported"
 neg =  error "Currently unsupported"
 
 sbr :: Register -> SWord8 -> AVR
-sbr r1 k = ori r1 k
+sbr = ori
 
 cbr :: Register -> SWord8 -> AVR
 cbr r1 k = andi r1 (0xFF - k)
@@ -288,7 +291,54 @@ set r1 = lift $ writeRegister r1 0xFF
 
 -- Branch instructions
 
-breq :: String -> AVR
+rjmp :: String -> AVR
+rjmp = jmpLabel
+
+ijmp :: AVR
+ijmp = error "Currently unsupported"
+
+eijmp :: AVR
+eijmp = error "Currently unsupported"
+
+rcall :: String -> AVR
+rcall = callLabel
+
+icall :: AVR
+icall = error "Currently unsupported"
+
+reti :: AVR
+reti = error "Currently unsupported"
+
+cpse :: Register -> Register -> AVR
+cpse = error "Currently unsupported"
+
+cp :: Register -> Register -> AVR
+cp = error "Currently unsupported"
+
+cpc :: Register -> Register -> AVR
+cpc = error "Currently unsupported"
+
+cpi :: Register -> SWord8 -> AVR
+cpi = error "Currently unsupported"
+
+sbrc :: Register -> SWord8 -> AVR
+sbrc = error "Currently unsupported"
+
+sbrs :: Register -> SWord8 -> AVR
+sbrs = error "Currently unsupported"
+
+sbic :: SWord8 -> SWord8 -> AVR
+sbic = error "Currently unsupported"
+
+sbis :: SWord8 -> SWord8 -> AVR
+sbis = error "Currently unsupported"
+
+brbc :: StatusFlag -> String -> AVR
+brbc = error "Currently unsupported"
+
+brbs :: StatusFlag -> String -> AVR
+brbs = error "Currently unsupported"
+
 breq target = do
   s <- lift $ readStatusReg SZ
   jmpLabelCond s target
@@ -298,7 +348,75 @@ brne target = do
   s <- lift $ readStatusReg SZ
   jmpLabelCond (bnot s) target
 
-rcall :: String -> AVR
-rcall = callLabel
+brcs :: String -> AVR
+brcs = error "Currently unsupported"
+
+brcc :: String -> AVR
+brcc = error "Currently unsupported"
+
+brsh :: String -> AVR
+brsh = error "Currently unsupported"
+
+brlo :: String -> AVR
+brlo = error "Currently unsupported"
+
+brmi :: String -> AVR
+brmi = error "Currently unsupported"
+
+brpl :: String -> AVR
+brpl = error "Currently unsupported"
+
+brge :: String -> AVR
+brge = error "Currently unsupported"
+
+brlt :: String -> AVR
+brlt = error "Currently unsupported"
+
+brhs :: String -> AVR
+brhs = error "Currently unsupported"
+
+brhc :: String -> AVR
+brhc = error "Currently unsupported"
+
+-- Bit and bit-test instructions
+
+updateShiftFlags :: SWord8 -> SWord8 -> AVR
+updateShiftFlags rd r = lift $ do
+  writeStatusReg SH $ sbvTestBit rd 3
+  writeStatusReg SN $ msb r
+  writeStatusReg SC $ msb rd
+  writeStatusReg SZ $ r .== 0
+  writeStatusReg SV false
+
+  ss <- liftM2 (<+>) (readStatusReg SN) (readStatusReg SV)
+  writeStatusReg SS ss
+
+  sv <- liftM2 (<+>) (readStatusReg SN) (readStatusReg SC)
+  writeStatusReg SV sv
+
+lsl :: Register -> AVR
+lsl r1 = do
+  v1 <- lift $ readRegister r1
+  let result = shiftL v1 1
+  lift $ writeRegister r1 result
+  updateShiftFlags v1 result
+
+lsr :: Register -> AVR
+lsr r1 = error "Currently unsupported"
+
+-- Data transfer instructions
 
 
+-- MCU Control instructions
+
+nop :: AVR
+nop = return ()
+
+sleep :: AVR
+sleep = error "Currently unsupported"
+
+wdr :: AVR
+wdr = error "Currently unsupported"
+
+break :: AVR
+break = error "Currently unsupported"

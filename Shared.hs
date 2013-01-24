@@ -71,7 +71,7 @@ data LabelState a = LabelState {
   callStack :: [AVRBackend a],
   stateSnapshot :: Maybe a,
   tmp :: Maybe (AVRBackend a),
-  callCount :: SInt8
+  callCount :: SInt16
 }
 
 type AVRBackend a = ContT () (AVRBackendBase a) ()
