@@ -21,8 +21,7 @@ maxCallCount = 1000
 type AVR = AVRBackend MachineState
 
 data MachineState = MachineState {
-    memory :: SFunArray Word16 Word8,
-    registers :: Array Register SWord8,
+    memory :: SArray Word16 Word8,
     sreg :: Array StatusFlag SBool,
     stackL :: SWord8,
     stackH :: SWord8
@@ -33,16 +32,15 @@ instance Mergeable AVR where
     s <- lift get
     s' <- lift . lift $ get
 
-    let MachineState a1 a2 a3 a4 a5 = programInternal m1 s' s
-    let MachineState b1 b2 b3 b4 b5 = programInternal m2 s' s
-    let m' = MachineState (symbolicMerge b a1 b1) (symbolicMerge b a2 b2) (symbolicMerge b a3 b3) (symbolicMerge b a4 b4) (symbolicMerge b a5 b5)
+    let MachineState a1 a2 a3 a4 = programInternal m1 s' s
+    let MachineState b1 b2 b3 b4 = programInternal m2 s' s
+    let m' = MachineState (symbolicMerge b a1 b1) (symbolicMerge b a2 b2) (symbolicMerge b a3 b3) (symbolicMerge b a4 b4)
 
     lift . lift $ put m'
 
-initialState = MachineState mem reg status 0 0
+initialState = mem >>= \m -> return $ MachineState m status 0 0
   where
-  mem = resetArray (mkSFunArray $ const 0) 0
-  reg = array (minBound, maxBound) $ zip [minBound..maxBound] $ cycle [0]
+  mem = newArray_ Nothing
   status = array (minBound, maxBound) $ zip [minBound..maxBound] $ cycle [true]
 
 jmpLabel = processLabel False
@@ -108,12 +106,15 @@ ret = do
     lift . modify $ \state -> state { callStack = rest }
     loc
 
+lookupAddress reg | reg <= R31 = literal $ fromIntegral $ fromEnum reg
+                  | otherwise = error "Unsupported register"
+
 writeRegister reg val = lift . modify $
-  \s -> s { registers = registers s // [(reg, val)] }
+  \s -> s { memory = writeArray (memory s) (lookupAddress reg) val }
 
 readRegister reg = do
-  regs <- lift $ gets registers
-  return $ regs ! reg
+  regs <- lift $ gets memory
+  return . readArray regs $ lookupAddress reg
 
 readStatusReg bit = do
   sreg' <- lift $ gets sreg
@@ -121,7 +122,7 @@ readStatusReg bit = do
 
 readStatusRegWord bit = do
   sreg' <- lift $ gets sreg
-  return $ oneIf $ sreg' ! bit
+  return . oneIf $ sreg' ! bit
 
 writeStatusReg bit val = lift . modify $
   \s -> s { sreg = sreg s // [(bit, val)] }

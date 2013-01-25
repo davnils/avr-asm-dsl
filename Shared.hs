@@ -3,7 +3,6 @@ module Shared where
 import Control.Monad.Cont
 import Control.Monad.Identity
 import Control.Monad.State
-import Control.Monad.Trans.Tardis
 import Data.Array (Ix(..))
 import Data.SBV
 import qualified Data.Map as M

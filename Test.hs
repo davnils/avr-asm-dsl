@@ -46,19 +46,21 @@ prog2 = do
   label "done"
 
 freeRegisters = do
-  let regs = registers initialState
+  state <- initialState
+  let ar0 = memory state
   r1 <- sWord8 "r1"
   r2 <- sWord8 "r2"
-  let arr' = regs // [(R1, r1), (R2, r2)]
-  return $ initialState { registers = arr' }
+  let ar1 = writeArray ar0 (lookupAddress R1) r1
+  let ar2 = writeArray ar1 (lookupAddress R2) r2
+  return $ state { memory = ar2 }
 
 proveEquivalence :: AVR -> AVR -> IO ThmResult
 proveEquivalence proga progb = prove statement
   where
   statement = do
     state <- freeRegisters
-    let eval prog = registers $ program prog state
-    return $ (eval proga ! R1) .== (eval progb ! R1)
+    let eval prog = readArray (memory $ program prog state) (lookupAddress R1)
+    return $ eval proga .== eval progb
 
 main :: IO ()
 main = proveEquivalence prog1 prog2 >>= print
