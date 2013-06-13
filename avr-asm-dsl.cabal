@@ -1,0 +1,52 @@
+name:                avr-asm-dsl
+version:             0.1.0.0
+stability:           experimental
+
+synopsis:            AVR eDSL with verification.
+description:         .
+
+homepage:            https://github.com/davnils/avr-asm-dsl
+bug-reports:         https://github.com/davnils/avr-asm-dsl/issues
+
+license:             BSD3
+license-file:        LICENSE
+
+author:              David Nilsson
+maintainer:          nilsson.dd+code@gmail.com
+
+category:            Formal Methods
+
+build-type:          Simple
+cabal-version:       >=1.8
+
+library
+  hs-source-dirs:    avr-lib/
+  exposed-modules:   Language.AVR.Assembler,
+                     Language.AVR.Shared,
+                     Language.AVR.Verification
+
+  ghc-options:       -Wall
+
+  build-depends:     
+                     array == 0.4.*,
+                     base == 4.6.*,
+                     containers == 0.5.*,
+                     mtl == 2.1.*,
+                     sbv == 2.8.*
+
+executable example-equivalence
+  hs-source-dirs:    avr-examples/
+  main-is:           Equivalence.hs
+  ghc-options:       -O2 -Wall
+  
+  build-depends:     
+                     array == 0.4.*,
+                     avr-asm-dsl == 0.1.*,
+                     base == 4.6.*,
+                     containers == 0.5.*,
+                     mtl == 2.1.*,
+                     sbv == 2.8.*
+
+source-repository head
+  type: git
+  location: https://github.com/davnils/avr-asm-dsl.git

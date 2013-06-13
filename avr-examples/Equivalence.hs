@@ -1,17 +1,15 @@
 {-# Language NoMonomorphismRestriction #-}
--- TODO: consider the RebindableSyntax extension
 
 module Main where
 
--- import Assembler
 import Control.Monad.Cont
 import Control.Monad.Identity
 import Control.Monad.State
 import Data.Array
 import qualified Data.Map as M
 import Data.SBV
-import Shared
-import Verification
+import Language.AVR.Shared
+import Language.AVR.Verification
 
 -- Two versions of a program that doubles an integer in 'r1' a total of 'r2' times.
 -- Proofs are currently done over the register file, hence stack etc is ignored.

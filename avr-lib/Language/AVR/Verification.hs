@@ -1,7 +1,6 @@
--- läs http://www.reddit.com/r/programming/comments/15q6lw/the_continuation_monad/
 {-# Language TypeSynonymInstances, FlexibleInstances #-}
 
-module Verification where
+module Language.AVR.Verification where
 
 import Control.Applicative
 import Control.Monad.Cont
@@ -10,7 +9,7 @@ import Data.Array (Array, Ix(..), (!), (//), array)
 import qualified Data.Map as M
 import Data.SBV
 import Prelude hiding (and)
-import Shared
+import Language.AVR.Shared
 
 --------------------------------------------
 --         Verification backend           --

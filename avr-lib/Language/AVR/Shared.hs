@@ -1,4 +1,4 @@
-module Shared where
+module Language.AVR.Shared where
 
 import Control.Monad.Cont
 import Control.Monad.Identity

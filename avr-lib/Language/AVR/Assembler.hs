@@ -1,7 +1,7 @@
-module Assembler where
+module Language.AVR.Assembler where
 
 import Control.Monad.State
-import Shared
+import Language.AVR.Shared
 
 --------------------------------------------
 --           Assembler backend            --
@@ -11,7 +11,7 @@ type Constant = Int
 type Port = Int
 type Label = Int
 type Bit = Int
-type StatusFlag = Int
+-- type StatusFlag = Int
 type RegisterLow = Register
 
 type AVR = AVRBackend AssemblerState
